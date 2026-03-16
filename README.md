@@ -7,6 +7,7 @@ This addon works with Blender 4.x
 ## Features
 - Load, save and delete presets.
 - Create custom uncertainty indices with any number of classes and associated colours.
+- Includes default preset based on [ 4D Research Lab Degrees of Certainty.](https://4dresearchlab.nl/degrees-of-certainty-for-reconstructions/)
 - Easily assign classes to models.
 - Quickly turn on/off uncertainty visualization in the viewport.
 - Basic statistics on uncertainty classes present in the model.
