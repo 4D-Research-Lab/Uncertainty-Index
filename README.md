@@ -17,4 +17,3 @@ This addon works with Blender 4.x
 ## AI generated
 This code was developed using Claude.ai
 
-#Test
