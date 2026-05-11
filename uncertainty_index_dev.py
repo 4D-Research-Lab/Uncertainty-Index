@@ -78,6 +78,16 @@ class UncertaintyClass(bpy.types.PropertyGroup):
 # Helpers
 # ---------------------------------------------------------------------------
 
+def clear_all_uncertainty_assignments():
+    """Remove uncertainty_index, uncertainty_label and reset object color on all objects."""
+    for obj in bpy.data.objects:
+        if "uncertainty_index" in obj:
+            del obj["uncertainty_index"]
+        if "uncertainty_label" in obj:
+            del obj["uncertainty_label"]
+        obj.color = (1.0, 1.0, 1.0, 1.0)
+
+
 def load_classes_from_list(scene, class_list):
     scene.uncertainty_classes.clear()
     for entry in class_list:
@@ -230,10 +240,16 @@ class OBJECT_OT_assign_uncertainty_index(bpy.types.Operator):
 # ---------------------------------------------------------------------------
 
 class OBJECT_OT_load_selected_preset(bpy.types.Operator):
-    """Load the preset selected in the dropdown"""
+    """Load the preset selected in the dropdown — clears all existing assignments"""
     bl_idname = "object.load_selected_preset"
     bl_label = "Load Preset"
     bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(
+            self, event,
+            message="Loading a preset will clear ALL uncertainty assignments on all objects. Continue?"
+        )
 
     def execute(self, context):
         value = context.scene.uncertainty_preset_selector
@@ -256,8 +272,29 @@ class OBJECT_OT_load_selected_preset(bpy.types.Operator):
             self.report({'WARNING'}, f"Preset '{name}' not found.")
             return {'CANCELLED'}
 
+        clear_all_uncertainty_assignments()
         load_classes_from_list(context.scene, preset)
-        self.report({'INFO'}, f"Loaded preset '{name}'.")
+        self.report({'INFO'}, f"Loaded preset '{name}' and cleared all assignments.")
+        return {'FINISHED'}
+
+
+class OBJECT_OT_new_uncertainty_index(bpy.types.Operator):
+    """Clear all classes and assignments to start a new index from scratch"""
+    bl_idname = "object.new_uncertainty_index"
+    bl_label = "New Index"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(
+            self, event,
+            message="This will clear ALL classes and uncertainty assignments on all objects. Continue?"
+        )
+
+    def execute(self, context):
+        clear_all_uncertainty_assignments()
+        context.scene.uncertainty_classes.clear()
+        context.scene.uncertainty_class_index = 0
+        self.report({'INFO'}, "Cleared all classes and assignments.")
         return {'FINISHED'}
 
 
@@ -771,6 +808,7 @@ class VIEW3D_PT_uncertainty_index(bpy.types.Panel):
 
         row = preset_box.row(align=True)
         row.operator("object.load_selected_preset", text="Load", icon='IMPORT')
+        row.operator("object.new_uncertainty_index", text="New", icon='FILE_NEW')
         row.operator("object.save_user_preset", text="Save", icon='ADD')
         row.operator("object.delete_selected_preset", text="Delete", icon='TRASH')
 
@@ -832,10 +870,7 @@ class VIEW3D_PT_uncertainty_index(bpy.types.Panel):
         else:
             for obj in selected:
                 label = obj.get("uncertainty_label", None)
-                if label is None:
-                    label_str = "no uncertainty assigned"
-                else:
-                    label_str = label
+                label_str = label if label is not None else "no uncertainty assigned"
                 info_box.label(text=f"{obj.name}: {label_str}")
 
         layout.separator()
@@ -896,6 +931,7 @@ CLASSES = [
     OBJECT_OT_select_uncertainty_class,
     OBJECT_OT_assign_uncertainty_index,
     OBJECT_OT_load_selected_preset,
+    OBJECT_OT_new_uncertainty_index,
     OBJECT_OT_save_user_preset,
     OBJECT_OT_delete_selected_preset,
     OBJECT_OT_toggle_object_color_display,
