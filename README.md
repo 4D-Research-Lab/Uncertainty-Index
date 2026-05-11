@@ -22,5 +22,7 @@ This addon works with Blender 4.x
 ## AI generated
 This code was developed using the claude sonnet 4.6 model.
 
+![alt text](illustration/uncertainty_render_legend.png)
+
 
 
