@@ -822,18 +822,21 @@ class VIEW3D_PT_uncertainty_index(bpy.types.Panel):
 
         layout.separator()
 
-        # --- Active object info ---
-        obj = context.active_object
+        # --- Selected objects info ---
         info_box = layout.box()
-        info_box.label(text="Active Object", icon='INFO')
-        if obj:
-            label = obj.get("uncertainty_label", None)
-            if label is not None:
-                info_box.label(text=f"Current: {label}")
-            else:
-                info_box.label(text="No uncertainty assigned yet")
+        info_box.label(text="selected objects", icon='INFO')
+
+        selected = context.selected_objects
+        if not selected:
+            info_box.label(text="none selected")
         else:
-            info_box.label(text="No active object")
+            for obj in selected:
+                label = obj.get("uncertainty_label", None)
+                if label is None:
+                    label_str = "no uncertainty assigned"
+                else:
+                    label_str = label
+                info_box.label(text=f"{obj.name}: {label_str}")
 
         layout.separator()
 
