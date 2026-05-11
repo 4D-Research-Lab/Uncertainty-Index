@@ -1,6 +1,8 @@
 # Uncertainty Index
 A Blender addon for assigning uncertainty classifications to 3D models. Aimed at heritage, archaeological, and historical visualizations where models are based on hypotheses with varying degrees of certainty.
 
+![alt text](illustration/Uncertainty_index_illustration1.png)
+
 ## Blender version
 This addon works with Blender 4.x
 
