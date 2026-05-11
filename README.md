@@ -13,11 +13,9 @@ This addon works with Blender 4.x
 - Basic statistics on uncertainty classes present in the model.
 - Render with inclusion of legend.
 - Export model names and uncertainty class to CSV.
-- Stores uncertainty labels and classification as object property (metadata saved in file using GLTF/GLB exporter).
+- Stores uncertainty labels and classification as object property (saved as metdata in 3D model file using the GLTF/GLB exporter).
 
 ## AI generated
 This code was developed using Claude.ai
-
-# Manual
 
 
