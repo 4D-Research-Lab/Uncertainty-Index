@@ -824,7 +824,7 @@ class VIEW3D_PT_uncertainty_index(bpy.types.Panel):
 
         # --- Selected objects info ---
         info_box = layout.box()
-        info_box.label(text="selected objects", icon='INFO')
+        info_box.label(text="Selected Objects", icon='INFO')
 
         selected = context.selected_objects
         if not selected:
