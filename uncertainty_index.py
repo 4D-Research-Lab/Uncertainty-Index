@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Uncertainty Index",
     "author": "Tijm Lanjouw",
-    "version": (0, 9),
+    "version": (1, 0),
     "blender": (4, 0, 0),
     "location": "View3D > Sidebar > Uncertainty",
     "description": "Allows assigning uncertainty classification to models",
