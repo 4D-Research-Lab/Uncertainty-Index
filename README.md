@@ -17,7 +17,10 @@ This addon works with Blender 4.x
 - Export model names and uncertainty class to CSV.
 - Stores uncertainty labels and classification as object property (saved as metdata in 3D model file using the GLTF/GLB exporter).
 
+![alt text](illustration/Uncertainty_index_illustration2.png)
+
 ## AI generated
 This code was developed using the claude sonnet 4.6 model.
+
 
 
