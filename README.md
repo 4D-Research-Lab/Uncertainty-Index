@@ -1,7 +1,7 @@
 # Uncertainty Index
 A Blender addon for assigning uncertainty classifications to 3D models. Aimed at heritage, archaeological, and historical visualizations where models are based on hypotheses with varying degrees of certainty.
 
-![alt text](illustration/Uncertainty_index_illustration1.png)
+![UI overview](illustration/Uncertainty_index_illustration1.png)
 
 ## Blender version
 This addon works with Blender 4.x
@@ -17,12 +17,13 @@ This addon works with Blender 4.x
 - Export model names and uncertainty class to CSV.
 - Stores uncertainty labels and classification as object property (saved as metdata in 3D model file using the GLTF/GLB exporter).
 
-![alt text](illustration/Uncertainty_index_illustration2.png)
+![Lower part of panel](illustration/Uncertainty_index_illustration2.png)
+![Render legend example](illustration/uncertainty_render_legend.png)
 
 ## AI generated
 This code was developed using the claude sonnet 4.6 model.
 
-![alt text](illustration/uncertainty_render_legend.png)
+
 
 
 
