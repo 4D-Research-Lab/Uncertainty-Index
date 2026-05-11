@@ -116,6 +116,16 @@ def save_user_presets(scene, presets_dict):
     scene["uncertainty_user_presets"] = json.dumps(presets_dict)
 
 
+def get_active_preset_name(scene):
+    """Return the human-readable name of the currently selected preset, or empty string."""
+    value = scene.uncertainty_preset_selector
+    if value.startswith("builtin::"):
+        return value[len("builtin::"):]
+    if value.startswith("user::"):
+        return value[len("user::"):]
+    return ""
+
+
 def get_all_preset_items(scene):
     """Return all preset names (built-in + user) as enum items."""
     items = []
@@ -347,6 +357,124 @@ class OBJECT_OT_delete_selected_preset(bpy.types.Operator):
         self.report({'INFO'}, f"Deleted preset '{name}'.")
         return {'FINISHED'}
 
+
+class OBJECT_OT_export_preset(bpy.types.Operator):
+    """Export the currently selected preset to a JSON file"""
+    bl_idname = "object.export_uncertainty_preset"
+    bl_label = "Export Preset"
+    bl_options = {'REGISTER'}
+
+    filepath: bpy.props.StringProperty(
+        name="File Path",
+        subtype='FILE_PATH',
+        default="preset.json",
+    )
+    filter_glob: bpy.props.StringProperty(
+        default="*.json",
+        options={'HIDDEN'},
+    )
+
+    def invoke(self, context, event):
+        scene = context.scene
+        preset_name = get_active_preset_name(scene)
+        blend_path = bpy.data.filepath
+        base = os.path.splitext(blend_path)[0] if blend_path else ""
+        safe_name = preset_name.replace(" ", "_") if preset_name else "preset"
+        self.filepath = (base + "_" if base else "") + safe_name + ".json"
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        scene = context.scene
+        value = scene.uncertainty_preset_selector
+
+        if value == "NONE":
+            self.report({'WARNING'}, "No preset selected.")
+            return {'CANCELLED'}
+
+        preset_name = get_active_preset_name(scene)
+
+        if value.startswith("builtin::"):
+            classes = BUILTIN_PRESETS.get(preset_name, [])
+        elif value.startswith("user::"):
+            classes = get_user_presets(scene).get(preset_name, [])
+        else:
+            self.report({'WARNING'}, "Unknown preset type.")
+            return {'CANCELLED'}
+
+        filepath = bpy.path.abspath(self.filepath)
+        if not filepath.lower().endswith(".json"):
+            filepath += ".json"
+
+        data = {"name": preset_name, "classes": classes}
+
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+        except OSError as e:
+            self.report({'ERROR'}, f"Could not write file: {e}")
+            return {'CANCELLED'}
+
+        self.report({'INFO'}, f"Exported preset '{preset_name}' to '{filepath}'.")
+        return {'FINISHED'}
+
+
+class OBJECT_OT_import_preset(bpy.types.Operator):
+    """Import a preset from a JSON file and add it as a user preset"""
+    bl_idname = "object.import_uncertainty_preset"
+    bl_label = "Import Preset"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    filepath: bpy.props.StringProperty(
+        name="File Path",
+        subtype='FILE_PATH',
+    )
+    filter_glob: bpy.props.StringProperty(
+        default="*.json",
+        options={'HIDDEN'},
+    )
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        filepath = bpy.path.abspath(self.filepath)
+
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            self.report({'ERROR'}, f"Could not read file: {e}")
+            return {'CANCELLED'}
+
+        # Validate structure
+        if "classes" not in data or not isinstance(data["classes"], list):
+            self.report({'ERROR'}, "Invalid preset file: missing 'classes' list.")
+            return {'CANCELLED'}
+
+        for entry in data["classes"]:
+            if "label" not in entry or "color" not in entry:
+                self.report({'ERROR'}, "Invalid preset file: each class needs 'label' and 'color'.")
+                return {'CANCELLED'}
+
+        name = data.get("name", os.path.splitext(os.path.basename(filepath))[0]).strip()
+        if not name:
+            name = "Imported Preset"
+
+        presets = get_user_presets(context.scene)
+        # Avoid name collision
+        base_name = name
+        counter = 1
+        while name in presets or name in BUILTIN_PRESETS:
+            name = f"{base_name} ({counter})"
+            counter += 1
+
+        presets[name] = data["classes"]
+        save_user_presets(context.scene, presets)
+        self.report({'INFO'}, f"Imported preset as '{name}'.")
+        return {'FINISHED'}
+
 # ---------------------------------------------------------------------------
 # Operator – toggle object color display
 # ---------------------------------------------------------------------------
@@ -447,7 +575,6 @@ import struct
 import tempfile
 from gpu_extras.batch import batch_for_shader
 
-# Module-level handle kept for safety in case of unclean shutdown
 _legend_draw_handle = None
 
 
@@ -458,33 +585,29 @@ def _linear_to_srgb(c):
     return 1.055 * (c ** (1.0 / 2.4)) - 0.055
 
 
-def _build_legend_pixels(classes, width, height):
+def _build_legend_pixels(classes, width, height, title=""):
     """
-    Build a flat RGBA pixel array (floats, Blender convention) of size width×height
-    containing the legend box, ready to be blended onto a render.
-    Returns a flat list of floats: [r,g,b,a, r,g,b,a, ...] bottom-row first.
+    Build a flat RGBA pixel array for the legend box.
+    If title is non-empty it is rendered as a header line above the class rows.
+    Returns a flat list of floats: [r,g,b,a, ...] bottom-row first.
     """
-    # Layout constants (pixels) — doubled for legibility
-    pad        = 28
-    swatch_w   = 36
-    swatch_h   = 28
-    row_h      = 44
+    pad       = 28
+    swatch_w  = 36
+    swatch_h  = 28
+    row_h     = 44
+    title_h   = (row_h if title else 0)   # extra height for the title row
 
-    n = len(classes)
-
-    # Estimate label widths at ~12 px per character (doubled glyph width + gap)
-    char_w     = 12
-    max_chars  = max(len(uc.label) for uc in classes)
-    label_w    = max_chars * char_w
+    char_w    = 12
+    max_label = max((len(uc.label) for uc in classes), default=0)
+    title_w   = len(title) * char_w
+    label_w   = max(max_label * char_w, title_w)
 
     box_w = pad + swatch_w + pad + label_w + pad
-    box_h = pad + n * row_h + pad
+    box_h = pad + title_h + len(classes) * row_h + pad
 
-    # Position: bottom-left corner
     box_x = pad
     box_y = pad
 
-    # Start with fully transparent canvas
     pixels = [0.0] * (width * height * 4)
 
     def set_pixel(x, y, r, g, b, a):
@@ -500,14 +623,24 @@ def _build_legend_pixels(classes, width, height):
             for dx in range(w):
                 set_pixel(x0 + dx, y0 + dy, r, g, b, a)
 
-    # Semi-transparent dark background
+    # Background
     fill_rect(box_x, box_y, box_w, box_h, 0.08, 0.08, 0.08, 0.75)
 
-    # Draw each class row
+    # Title row (rendered at the top of the box, above the class rows)
+    if title:
+        ty = box_y + pad + len(classes) * row_h + (title_h - _FONT_GLYPH_H * 2) // 2
+        tx = box_x + pad
+        _draw_text_pixels(pixels, width, height, tx, ty, title, 0.85, 0.85, 0.85, scale=2)
+
+        # Thin separator line between title and classes
+        sep_y = box_y + pad + len(classes) * row_h
+        for dx in range(box_w - pad):
+            set_pixel(box_x + dx, sep_y, 0.5, 0.5, 0.5, 0.8)
+
+    # Class rows
     for i, uc in enumerate(classes):
         row_y = box_y + pad + i * row_h
 
-        # Colour swatch
         sx = box_x + pad
         sy = row_y + (row_h - swatch_h) // 2
         r = _linear_to_srgb(uc.color[0])
@@ -515,7 +648,6 @@ def _build_legend_pixels(classes, width, height):
         b = _linear_to_srgb(uc.color[2])
         fill_rect(sx, sy, swatch_w, swatch_h, r, g, b, 1.0)
 
-        # White 1px border around swatch
         for dx in range(swatch_w):
             set_pixel(sx + dx, sy,               1.0, 1.0, 1.0, 0.8)
             set_pixel(sx + dx, sy + swatch_h - 1, 1.0, 1.0, 1.0, 0.8)
@@ -523,7 +655,6 @@ def _build_legend_pixels(classes, width, height):
             set_pixel(sx,                sy + dy, 1.0, 1.0, 1.0, 0.8)
             set_pixel(sx + swatch_w - 1, sy + dy, 1.0, 1.0, 1.0, 0.8)
 
-        # Label text
         tx = sx + swatch_w + pad
         ty = row_y + (row_h - _FONT_GLYPH_H * 2) // 2
         _draw_text_pixels(pixels, width, height, tx, ty, uc.label, 1.0, 1.0, 1.0, scale=2)
@@ -645,13 +776,13 @@ def _draw_text_pixels(pixels, img_w, img_h, x, y, text, r, g, b, scale=1):
         cx += (_FONT_GLYPH_W + _FONT_GLYPH_GAP) * scale
 
 
-def _composite_legend(render_img, classes):
+def _composite_legend(render_img, classes, title=""):
     """Composite the legend onto a bpy.types.Image in-place."""
     w = render_img.size[0]
     h = render_img.size[1]
 
     render_pixels = list(render_img.pixels)
-    legend_pixels = _build_legend_pixels(classes, w, h)
+    legend_pixels = _build_legend_pixels(classes, w, h, title=title)
 
     for i in range(w * h):
         base = i * 4
@@ -764,7 +895,8 @@ class OBJECT_OT_render_uncertainty_view(bpy.types.Operator):
             render_img.pack()
 
             class_snapshot = [_UC(uc.label, tuple(uc.color)) for uc in classes]
-            _composite_legend(render_img, class_snapshot)
+            
+            _composite_legend(render_img, class_snapshot, title=scene.uncertainty_legend_title)
 
             render_img.filepath_raw = filepath
             render_img.file_format  = 'PNG'
@@ -811,6 +943,10 @@ class VIEW3D_PT_uncertainty_index(bpy.types.Panel):
         row.operator("object.new_uncertainty_index", text="New", icon='FILE_NEW')
         row.operator("object.save_user_preset", text="Save", icon='ADD')
         row.operator("object.delete_selected_preset", text="Delete", icon='TRASH')
+
+        row2 = preset_box.row(align=True)
+        row2.operator("object.export_uncertainty_preset", text="Export Preset", icon='EXPORT')
+        row2.operator("object.import_uncertainty_preset", text="Import Preset", icon='IMPORT')
 
         layout.separator()
 
@@ -915,8 +1051,10 @@ class VIEW3D_PT_uncertainty_index(bpy.types.Panel):
         # --- Export ---
         export_box = layout.box()
         export_box.label(text="Export", icon='EXPORT')
-        export_box.operator("object.render_uncertainty_view", icon='RENDER_STILL')
         export_box.prop(scene, "uncertainty_render_legend")
+        if scene.uncertainty_render_legend:
+            export_box.prop(scene, "uncertainty_legend_title", text="Legend Title")
+        export_box.operator("object.render_uncertainty_view", icon='RENDER_STILL')
         export_box.operator("object.export_uncertainty_csv", icon='FILE_TEXT')
 
 
@@ -934,6 +1072,8 @@ CLASSES = [
     OBJECT_OT_new_uncertainty_index,
     OBJECT_OT_save_user_preset,
     OBJECT_OT_delete_selected_preset,
+    OBJECT_OT_export_preset,
+    OBJECT_OT_import_preset,
     OBJECT_OT_toggle_object_color_display,
     OBJECT_OT_export_uncertainty_csv,
     OBJECT_OT_render_uncertainty_view,
@@ -960,6 +1100,11 @@ def register():
         description="Composite the uncertainty legend onto the rendered image",
         default=True,
     )
+    bpy.types.Scene.uncertainty_legend_title = bpy.props.StringProperty(
+        name="Legend Title",
+        description="Optional heading at the top of the rendered legend (leave empty for no title)",
+        default="",
+    )
 
 def unregister():
     for cls in reversed(CLASSES):
@@ -970,6 +1115,7 @@ def unregister():
     del bpy.types.Scene.uncertainty_preset_selector
     del bpy.types.Scene.uncertainty_ui_stats_open
     del bpy.types.Scene.uncertainty_render_legend
+    del bpy.types.Scene.uncertainty_legend_title
 
 if __name__ == "__main__":
     register()
