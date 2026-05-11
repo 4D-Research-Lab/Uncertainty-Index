@@ -19,8 +19,8 @@ This addon works with Blender 4.x
 - Stores uncertainty labels and classification as object property (saved as metdata in 3D model file using the GLTF/GLB exporter).
 
 ![Lower part of panel](illustration/Uncertainty_index_illustration2.png)
-![Render legend example](illustration/uncertainty_render_legend.png)
-*Render legend with custom heading*
+![Legend example](illustration/uncertainty_render_legend.png)
+*Automatically generated legend with custom heading*
 
 ## AI generated
 This code was developed using the claude sonnet 4.6 model.
