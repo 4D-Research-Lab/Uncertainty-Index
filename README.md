@@ -2,6 +2,7 @@
 A Blender addon for assigning uncertainty classifications to 3D models. Aimed at heritage, archaeological, and historical visualizations where models are based on hypotheses with varying degrees of certainty.
 
 ![UI overview](illustration/Uncertainty_index_illustration1.png)
+*Uncertainty Index UI overview*
 
 ## Blender version
 This addon works with Blender 4.x
@@ -19,6 +20,7 @@ This addon works with Blender 4.x
 
 ![Lower part of panel](illustration/Uncertainty_index_illustration2.png)
 ![Render legend example](illustration/uncertainty_render_legend.png)
+*Render legend with custom heading*
 
 ## AI generated
 This code was developed using the claude sonnet 4.6 model.
